@@ -7,5 +7,8 @@ LDLIBS  =
 race64: race64.c
 	$(CC) $(LDFLAGS) $(CFLAGS) -o $@ race64.c $(LDLIBS)
 
+check: race64
+	./test.sh
+
 clean:
 	rm -f race64
