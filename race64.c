@@ -69,8 +69,9 @@ encode(FILE *fin, FILE *fout)
         memset((char *)in + len, 0, sizeof(in) - len);
 
         /* Convert entire block at once with minimal branching */
+        int n;
         #pragma omp parallel for
-        for (int n = 0; n < LINES_PER_BLOCK; n++) {
+        for (n = 0; n < LINES_PER_BLOCK; n++) {
             unsigned char *pi = in[n];
             unsigned char *po = out[n];
             /* Unrolling this inner loop has HUGE performance gains. */
@@ -202,9 +203,11 @@ decode(FILE *fin, FILE *fout)
             out_len = sizeof(out);
         }
 
+        /* Convert entire block no matter the input length */
+        int n;
         int badline = LINES_PER_BLOCK;
         #pragma omp parallel for
-        for (int n = 0; n < LINES_PER_BLOCK; n++) {
+        for (n = 0; n < LINES_PER_BLOCK; n++) {
             unsigned char *pi = in[n];
             unsigned char *po = out[n];
             int check[2];
