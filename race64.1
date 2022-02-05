@@ -1,0 +1,42 @@
+.TH race64 1
+.SH NAME
+race64 \- high performance base64 encoder/decoder
+.SH SYNOPSIS
+.B race64
+[\fB-d\fR]
+[\fB-h\fR]
+[\fB-o\fR \fIoutfile\fR]
+\fI[infile]\fR
+.SH DESCRIPTION
+.B race64
+encodes and decodes base64 as fast as possible using multiple threads.
+The interface is compatible with GNU Coreutils
+.B base64
+except that only the \fB-d\fR option is supported.
+To achieve its speeds, race64 produces and consumes a very rigid format (compatible with
+.B base64
+defaults).
+.SH OPTIONS
+.TP
+\fB\-d\fR
+Decode input instead of encoding.
+.TP
+\fB\-h\fR
+Print basic usage information to standard output and exit.
+.TP
+\fB\-o\fR \fIfile\fR
+Output to a file instead of standard output.
+.SH ENVIRONMENT
+.B race64
+is not affected by environment variables.
+.SH FILES
+.B race64
+is not affected by any files.
+.SH "SEE ALSO"
+.BR base64(1),
+.BR uuencode(1),
+.BR uudecode(1)
+.SH AUTHORS
+Chris Wellons <wellons\[u0040]nullprogram.com>
+.SH BUGS
+No known bugs.
