@@ -1,12 +1,10 @@
+#include <ctype.h>
 #include <errno.h>
 #include <stdio.h>
-#include <stdlib.h>
 #include <string.h>
-#include "getopt.h"
 
 #define GROUPS_PER_LINE   19         // 1 group = 3 octets, 4 base64 digits
 #define LINES_PER_BLOCK   (1 << 14)  // tweaked experimentally
-#define PROGRAM_NAME      "race64"
 
 #if __clang__
 #  define UNROLL _Pragma("unroll")
@@ -251,22 +249,72 @@ decode(FILE *fin, FILE *fout)
     return 0;
 }
 
-static void
-usage(FILE *f)
+static int xoptind = 1;
+static int xoptopt;
+static char *xoptarg;
+
+/* Same as getopt(3) but never prints errors. */
+static int
+xgetopt(int argc, char * const argv[], const char *optstring)
 {
-    fprintf(f, "usage: " PROGRAM_NAME " [-dh] [-o OUTFILE] [INFILE]\n");
-    fprintf(f, "  -d       Decode input (default: encode)\n");
-    fprintf(f, "  -h       Print this help message\n");
-    fprintf(f, "  -o FILE  Output to file instead of standard output\n");
+    static int optpos = 1;
+    const char *arg;
+
+    arg = xoptind < argc ? argv[xoptind] : 0;
+    if (arg && arg[0] == '-' && arg[1] == '-' && !arg[2]) {
+        xoptind++;
+        return -1;
+    } else if (!arg || arg[0] != '-' || !isalnum(arg[1])) {
+        return -1;
+    } else {
+        const char *opt = strchr(optstring, arg[optpos]);
+        xoptopt = arg[optpos];
+        if (!opt) {
+            return '?';
+        } else if (opt[1] == ':') {
+            if (arg[optpos + 1]) {
+                xoptarg = (char *)arg + optpos + 1;
+                xoptind++;
+                optpos = 1;
+                return xoptopt;
+            } else if (argv[xoptind + 1]) {
+                xoptarg = (char *)argv[xoptind + 1];
+                xoptind += 2;
+                optpos = 1;
+                return xoptopt;
+            } else {
+                return ':';
+            }
+        } else {
+            if (!arg[++optpos]) {
+                xoptind++;
+                optpos = 1;
+            }
+            return xoptopt;
+        }
+    }
 }
 
-int
-main(int argc, char *argv[])
+static int
+usage(FILE *f)
+{
+    static const char usage[] =
+    "usage: race64 [-dh] [-o OUTFILE] [INFILE]\n"
+    "  -d       Decode input (default: encode)\n"
+    "  -h       Print this help message\n"
+    "  -o FILE  Output to file instead of standard output\n";
+    return fwrite(usage, sizeof(usage)-1, 1, f) && !fflush(f);
+}
+
+static const char *
+run(int argc, char **argv)
 {
     enum {MODE_ENCODE, MODE_DECODE} mode = MODE_ENCODE;
     const char *outfile = 0;
     FILE *in = stdin;
     FILE *out = stdout;
+    static char err[256];
+    unsigned long long lineno;
     int option;
 
 #ifdef _WIN32
@@ -275,34 +323,31 @@ main(int argc, char *argv[])
     _setmode(_fileno(stdin), 0x8000);
 #endif
 
-    while ((option = getopt(argc, argv, "dho:")) != -1) {
+    while ((option = xgetopt(argc, argv, "dho:")) != -1) {
         switch (option) {
-            case 'd':
-                mode = MODE_DECODE;
-                break;
-            case 'h':
-                usage(stdout);
-                exit(EXIT_SUCCESS);
-                break;
-            case 'o':
-                outfile = optarg;
-                break;
-            default:
-                usage(stderr);
-                exit(EXIT_FAILURE);
+        case 'd': mode = MODE_DECODE;
+                  break;
+        case 'h': return usage(stdout) ? 0 : "<stdout>";
+        case 'o': outfile = xoptarg;
+                  break;
+        case ':': usage(stderr);
+                  snprintf(err, sizeof(err), "missing argument: -%c", xoptopt);
+                  return err;
+        case '?': usage(stderr);
+                  snprintf(err, sizeof(err), "illegal option: -%c", xoptopt);
+                  return err;
         }
     }
 
     /* Configure input */
-    if (argv[optind]) {
-        if (argv[optind + 1]) {
-            fputs(PROGRAM_NAME ": too many arguments\n", stderr);
-            exit(EXIT_FAILURE);
+    const char *infile = argv[xoptind];
+    if (infile) {
+        if (argv[xoptind+1]) {
+            return "too many arguments";
         }
-        in = fopen(argv[optind], "rb");
+        in = fopen(infile, "rb");
         if (!in) {
-            perror(PROGRAM_NAME);
-            exit(EXIT_FAILURE);
+            return infile;
         }
     }
     setvbuf(in, 0, _IONBF, 0);
@@ -311,39 +356,50 @@ main(int argc, char *argv[])
     if (outfile) {
         out = fopen(outfile, "wb");
         if (!out) {
-            perror(PROGRAM_NAME);
-            exit(EXIT_FAILURE);
+            return outfile;
         }
     }
     setvbuf(out, 0, _IONBF, 0);
 
     switch (mode) {
-        unsigned long long lineno;
-        case MODE_ENCODE:
-            encode(in, out);
-            break;
-        case MODE_DECODE:
-            lineno = decode(in, out);
-            if (lineno) {
-                fprintf(stderr, "%s:%llu: invalid input\n",
-                        outfile ? outfile : "<stdin>", lineno);
-                exit(EXIT_FAILURE);
-            }
-            break;
+    case MODE_ENCODE:
+        encode(in, out);
+        break;
+    case MODE_DECODE:
+        lineno = decode(in, out);
+        if (lineno) {
+            snprintf(err, sizeof(err), "%s:%llu:invalid input",
+                     outfile ? outfile : "<stdin>", lineno);
+            return err;
+        }
+        break;
     }
 
-    /* Check for errors before exiting */
     if (ferror(in)) {
-        fputs(PROGRAM_NAME ": input error\n", stderr);
-        exit(EXIT_FAILURE);
+        return infile ? infile : "<stdin>";
     }
-    errno = 0;
-    if (fflush(out) || ferror(out)) {
-        if (errno)
-            perror(PROGRAM_NAME);
-        else
-            fputs(PROGRAM_NAME ": output error\n", stderr);
-        exit(EXIT_FAILURE);
+
+    fflush(out);
+    if (ferror(out)) {
+        return outfile ? outfile : "<stdout>";
+    }
+
+    return 0;
+}
+
+int
+main(int argc, char **argv)
+{
+    const char *err = run(argc, argv);
+    if (err) {
+        fputs("race64: ", stderr);
+        if (errno) {
+            fputs(strerror(errno), stderr);
+            fputs(": ", stderr);
+        }
+        fputs(err, stderr);
+        fputs("\n", stderr);
+        return 1;
     }
     return 0;
 }
