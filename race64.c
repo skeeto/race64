@@ -3,6 +3,8 @@
 #include <stdio.h>
 #include <string.h>
 
+#define VERSION "1.0.0"
+
 #define GROUPS_PER_LINE   19         // 1 group = 3 octets, 4 base64 digits
 #define LINES_PER_BLOCK   (1 << 14)  // tweaked experimentally
 
@@ -302,8 +304,16 @@ usage(FILE *f)
     "usage: race64 [-dh] [-o OUTFILE] [INFILE]\n"
     "  -d       Decode input (default: encode)\n"
     "  -h       Print this help message\n"
-    "  -o FILE  Output to file instead of standard output\n";
+    "  -o FILE  Output to file instead of standard output\n"
+    "  -V       Print version information\n";
     return fwrite(usage, sizeof(usage)-1, 1, f) && !fflush(f);
+}
+
+static int
+version(void)
+{
+    static const char version[] = "race64 " VERSION "\n";
+    return fwrite(version, sizeof(version)-1, 1, stdout) && !fflush(stdout);
 }
 
 static const char *
@@ -323,13 +333,14 @@ run(int argc, char **argv)
     _setmode(_fileno(stdin), 0x8000);
 #endif
 
-    while ((option = xgetopt(argc, argv, "dho:")) != -1) {
+    while ((option = xgetopt(argc, argv, "dho:V")) != -1) {
         switch (option) {
         case 'd': mode = MODE_DECODE;
                   break;
         case 'h': return usage(stdout) ? 0 : "<stdout>";
         case 'o': outfile = xoptarg;
                   break;
+        case 'V': return version() ? 0 : "<stdout>";
         case ':': usage(stderr);
                   snprintf(err, sizeof(err), "missing argument: -%c", xoptopt);
                   return err;
