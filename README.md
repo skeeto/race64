@@ -1,4 +1,4 @@
-# Race64: The World's Fastest Base64 Encoder / Decoder
+# Race64: high performance base64 encoder and decoder
 
 Race64 is a multi-threaded command line program that encodes and decodes
 Base64 as fast as possible. The interface is similar to `base64` in GNU
